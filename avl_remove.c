@@ -1,31 +1,30 @@
+/*
+** avl_remove.c : implementation of AVL Tree remove
+** Copyright (C) 2018  Tim Whisonant
+**
+** This program is free software; you can redistribute it and/or
+** modify it under the terms of the GNU General Public License
+** as published by the Free Software Foundation; either version 2
+** of the License, or (at your option) any later version.
+**
+** This program is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU General Public License for more details.
+**
+** You should have received a copy of the GNU General Public License
+** along with this program; if not, write to the Free Software
+** Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
 #include "avl.h"
-
-#define AVL_MAX(a, b)          \
-({                             \
-	typeof(a) __a = a;     \
-	typeof(b) __b = b;     \
-	__a > __b ? __a : __b; \
-})
-
-int32_t avl_tree_height_node(avl_tree_node *node);
-int32_t avl_tree_balance_node(avl_tree_node *node);
-avl_tree_node * avl_tree_ror_node(avl_tree_node *node);
-avl_tree_node * avl_tree_rol_node(avl_tree_node *node);
-
-static avl_tree_node * avl_tree_successor_node(avl_tree_node *node)
-{
-	avl_tree_node *successor = node->right;
-	while (successor->left)
-		successor = successor->left;
-	return successor;
-}
+#include "avl_util.h"
 
 static avl_tree_node * avl_tree_remove_node(avl_tree *t,
 					    void *item,
 					    avl_tree_node *node,
 					    int *removed)
 {
-	int res;
+	int64_t res;
 	int32_t balance;
 
 	if (!node)
@@ -70,8 +69,8 @@ static avl_tree_node * avl_tree_remove_node(avl_tree *t,
 		return node;
 
 	// update the height of the current node
-	node->height = AVL_MAX(avl_tree_height_node(node->left),
-			       avl_tree_height_node(node->right)) + 1;
+	node->height = avl_tree_max(avl_tree_height_node(node->left),
+				    avl_tree_height_node(node->right)) + 1;
 
 	balance = avl_tree_balance_node(node);
 

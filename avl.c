@@ -1,14 +1,37 @@
+/*
+** avl.c : implementation of AVL Trees
+** Copyright (C) 2018  Tim Whisonant
+**
+** This program is free software; you can redistribute it and/or
+** modify it under the terms of the GNU General Public License
+** as published by the Free Software Foundation; either version 2
+** of the License, or (at your option) any later version.
+**
+** This program is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU General Public License for more details.
+**
+** You should have received a copy of the GNU General Public License
+** along with this program; if not, write to the Free Software
+** Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
 #include "avl.h"
+#include "avl_util.h"
 
 void avl_tree_init(avl_tree *t,
 		avl_tree_node * (*allocate_node)(void *item),
 		void (*free_node)(avl_tree_node * ),
-		int (*compare_items)(void * , void * ))
+		int64_t (*compare_items)(void * , void * ),
+		avl_queue_entry * (*allocate_entry)(avl_tree_node * ),
+		void (*free_entry)(avl_queue_entry * ))
 {
 	t->root = NULL;
 	t->allocate_node = allocate_node;
 	t->free_node = free_node;
 	t->compare_items = compare_items;
+	t->allocate_entry = allocate_entry;
+	t->free_entry = free_entry;
 }
 
 static void avl_tree_destroy_node(avl_tree *t, avl_tree_node *node)
@@ -25,6 +48,7 @@ static void avl_tree_destroy_node(avl_tree *t, avl_tree_node *node)
 void avl_tree_destroy(avl_tree *t)
 {
 	avl_tree_destroy_node(t, t->root);
+	t->root = NULL;
 }
 
 static uint32_t avl_tree_num_items_node(avl_tree_node *node)
@@ -42,11 +66,11 @@ uint32_t avl_tree_num_items(avl_tree *t)
 
 int avl_tree_find(avl_tree *t,
 		  void *item,
-		  void (*visitor)(void *item, void *context),
+		  void (*visitor)(avl_tree_node *node, void *context),
 		  void *context)
 {
 	avl_tree_node *node;
-	int res;
+	int64_t res;
 
 	node = t->root;
 
@@ -59,7 +83,8 @@ int avl_tree_find(avl_tree *t,
 		} else if (res > 0) {
 			node = node->right;
 		} else {
-			visitor(node->item, context);
+			if (visitor)
+				visitor(node, context);
 			return 1;
 		}
 
@@ -69,28 +94,28 @@ int avl_tree_find(avl_tree *t,
 }
 
 static void avl_tree_pre_order_node(avl_tree *t,
-				    void (*visitor)(void *item, void *context),
+				    void (*visitor)(avl_tree_node *node, void *context),
 				    void *context,
 				    avl_tree_node *node)
 {
 	if (!node)
 		return;
 
-	visitor(node->item, context);
+	visitor(node, context);
 
 	avl_tree_pre_order_node(t, visitor, context, node->left);
 	avl_tree_pre_order_node(t, visitor, context, node->right);
 }
 
 void avl_tree_pre_order(avl_tree *t,
-			void (*visitor)(void *item, void *context),
+			void (*visitor)(avl_tree_node *node, void *context),
 			void *context)
 {
 	avl_tree_pre_order_node(t, visitor, context, t->root);
 }
 
 static void avl_tree_in_order_node(avl_tree *t,
-				   void (*visitor)(void *item, void *context),
+				   void (*visitor)(avl_tree_node *node, void *context),
 				   void *context,
 				   avl_tree_node *node)
 {
@@ -99,20 +124,20 @@ static void avl_tree_in_order_node(avl_tree *t,
 
 	avl_tree_in_order_node(t, visitor, context, node->left);
 
-	visitor(node->item, context);
+	visitor(node, context);
 
 	avl_tree_in_order_node(t, visitor, context, node->right);
 }
 
 void avl_tree_in_order(avl_tree *t,
-		       void (*visitor)(void *item, void *context),
+		       void (*visitor)(avl_tree_node *node, void *context),
 		       void *context)
 {
 	avl_tree_in_order_node(t, visitor, context, t->root);
 }
 
 static void avl_tree_post_order_node(avl_tree *t,
-				     void (*visitor)(void *item, void *context),
+				     void (*visitor)(avl_tree_node *node, void *context),
 				     void *context,
 				     avl_tree_node *node)
 {
@@ -123,28 +148,24 @@ static void avl_tree_post_order_node(avl_tree *t,
 
 	avl_tree_post_order_node(t, visitor, context, node->right);
 
-	visitor(node->item, context);
+	visitor(node, context);
 }
 
 void avl_tree_post_order(avl_tree *t,
-			 void (*visitor)(void *item, void *context),
+			 void (*visitor)(avl_tree_node *node, void *context),
 			 void *context)
 {
 	avl_tree_post_order_node(t, visitor, context, t->root);
 }
 
-typedef struct _avl_queue_entry {
-	avl_tree_node *node;
-	struct _avl_queue_entry *next;
-} avl_queue_entry;
-
-static void avl_add_queue_entry(avl_tree_node *node, avl_queue_entry **queue_head)
+static void avl_add_queue_entry(avl_tree *t,
+				avl_tree_node *node,
+				avl_queue_entry **queue_head)
 {
 	avl_queue_entry *entry;
 
-	entry = (avl_queue_entry *) malloc(sizeof(avl_queue_entry));
+	entry = t->allocate_entry(node);
 
-	entry->node = node;
 	entry->next = NULL;
 
 	if (*queue_head == NULL) {
@@ -167,7 +188,7 @@ static void avl_tree_level_order_node(avl_tree *t,
 	if (!node)
 		return;
 
-	avl_add_queue_entry(node, &queue_array[level]);
+	avl_add_queue_entry(t, node, &queue_array[level]);
 
 	avl_tree_level_order_node(t, node->left, queue_array, level+1);
 	avl_tree_level_order_node(t, node->right, queue_array, level+1);
@@ -204,7 +225,7 @@ void avl_tree_level_order(avl_tree *t,
 
 			trash = entry;
 			entry = entry->next;
-			free(trash);
+			t->free_entry(trash);
 		}
 	}
 

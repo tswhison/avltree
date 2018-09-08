@@ -1,7 +1,6 @@
 CC       ?= gcc
-CPPFLAGS ?=
-CFLAGS   ?= -std=gnu99 -ggdb3 -O0 -Wall -Werror
-LDFLAGS  ?=
+CPPFLAGS ?= -DMEMCHECK=1
+CFLAGS   ?= -std=gnu99 -g -O0 -Wall -Werror -fno-inline
 
 all: libavl.so main
 
@@ -16,6 +15,5 @@ main: main.c
 
 clean:
 	$(RM) libavl.so avl.o avl_insert.o avl_remove.o main
-	$(RM) -r cov mem
 
 .PHONY: all clean

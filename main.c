@@ -3,6 +3,7 @@
 #include <assert.h>
 
 #include "avl.h"
+#include "avl_util.h"
 
 #define mymin(a, b)            \
 ({                             \
@@ -24,10 +25,19 @@ avl_tree_node * my_allocate_avl_node(void *item)
 				calloc(1, sizeof(avl_tree_node));
 	if (node) {
 		node->item = item;
-		node->height = 1;
 	}
 
 	return node;
+}
+
+avl_queue_entry * my_allocate_avl_entry(avl_tree_node *node)
+{
+	avl_queue_entry *entry = (avl_queue_entry *)
+			malloc(sizeof(avl_queue_entry));
+	if (entry)
+		entry->node = node;
+
+	return entry;
 }
 
 void my_free_avl_node(avl_tree_node *node)
@@ -35,10 +45,15 @@ void my_free_avl_node(avl_tree_node *node)
 	free(node);
 }
 
-int my_int_compare(void *a, void *b)
+void my_free_avl_entry(avl_queue_entry *entry)
 {
-	int ia = (int) (int64_t) a;
-	int ib = (int) (int64_t) b;
+        free(entry);
+}
+
+int64_t my_int_compare(void *a, void *b)
+{
+	int64_t ia = (int64_t) a;
+	int64_t ib = (int64_t) b;
 	return ia - ib;
 }
 
@@ -62,7 +77,9 @@ void simple_insert_and_level_order(void)
 	avl_tree_init(&t, 
 		      my_allocate_avl_node,
 		      my_free_avl_node,
-		      my_int_compare);
+		      my_int_compare,
+		      my_allocate_avl_entry,
+		      my_free_avl_entry);
 
 	avl_tree_insert(&t, (void *) 10);
 	assert(t.root->item == (void *) 10);
@@ -144,6 +161,8 @@ void simple_insert_and_level_order(void)
 
 	last_level = 0;
 	avl_tree_level_order(&t, print_tree_item, &last_level);
+
+	avl_tree_destroy(&t);
 }
 
 typedef struct _int_randomizer {
@@ -230,9 +249,14 @@ int is_avl_tree(avl_tree *t)
 void insert_and_remove_stress(void)
 {
 	avl_tree t;
-	int repetitions = 4096;
+#ifdef MEMCHECK
+	int repetitions = 1000;
+	int max_items = 128;
+#else
+	int repetitions = 10000;
+	int max_items = 128;
+#endif // MEMCHECK
 	int num_items;
-	int max_items = 512;
 	int j;
 	int item;
 	int i;
@@ -240,7 +264,9 @@ void insert_and_remove_stress(void)
 	avl_tree_init(&t, 
 		      my_allocate_avl_node,
 		      my_free_avl_node,
-		      my_int_compare);
+		      my_int_compare,
+		      my_allocate_avl_entry,
+		      my_free_avl_entry);
 
 	for (j = 0 ; j < repetitions ; ++j) {
 		for (num_items = 1 ; num_items < max_items ; ++num_items) {
@@ -268,18 +294,138 @@ void insert_and_remove_stress(void)
 
 			free_randomizer(r);
 		}
-		printf(".");
-		fflush(stdout);
+
+		if (!(j % 100)) {
+			printf(".");
+			fflush(stdout);
+		}
 	}
 
 	avl_tree_destroy(&t);
 }
 
+void null_visitor(avl_tree_node *node, void *context)
+{
+	int *called = (int *) context;
+	(void) node;
+	*called = 1;
+}
+
+typedef struct _visit_sequence {
+	int i;
+	int item_sequence[3];
+} visit_sequence;
+
+void sequence_visitor(avl_tree_node *node, void *context)
+{
+	visit_sequence *seq = (visit_sequence *) context;
+	assert(seq->item_sequence[seq->i++] == (int) (int64_t) node->item);
+}
+
+void sequence_visitor_level(avl_tree_node *node, void *context, int level)
+{
+	visit_sequence *seq = (visit_sequence *) context;
+	(void) level;
+	assert(seq->item_sequence[seq->i++] == (int) (int64_t) node->item);
+}
+
+void other_coverage(void)
+{
+	avl_tree t;
+	visit_sequence seq;
+	int called = 0;
+	int i;
+
+	avl_tree_init(&t, 
+		      my_allocate_avl_node,
+		      my_free_avl_node,
+		      my_int_compare,
+		      my_allocate_avl_entry,
+		      my_free_avl_entry);
+	assert(!t.root);
+
+	avl_tree_destroy(&t);
+	assert(!t.root);
+	assert(0 == avl_tree_num_items(&t));
+	called = 0;
+	assert(!avl_tree_find(&t, (void *) 1, null_visitor, &called));
+	assert(!called);
+	assert(0 == avl_tree_height(&t));
+
+	seq.i = 0;
+	avl_tree_pre_order(&t, sequence_visitor, &seq);
+	avl_tree_in_order(&t, sequence_visitor, &seq);
+	avl_tree_post_order(&t, sequence_visitor, &seq);
+	avl_tree_level_order(&t, sequence_visitor_level, &seq);
+	assert(0 == seq.i);
+
+	assert(avl_tree_insert(&t, (void *) 1));
+	assert(avl_tree_insert(&t, (void *) 2));
+	assert(avl_tree_insert(&t, (void *) 0));
+
+	// duplicates not allowed
+	assert(!avl_tree_insert(&t, (void *) 0));
+	assert(3 == avl_tree_num_items(&t));
+	assert(avl_tree_find(&t, (void *) 2, NULL, NULL));
+	assert(!avl_tree_find(&t, (void *) 3, NULL, NULL));
+
+	called = 0;
+	assert(avl_tree_find(&t, (void *) 0, null_visitor, &called));
+	assert(called);
+	called = 0;
+	assert(avl_tree_find(&t, (void *) 1, null_visitor, &called));
+	assert(called);
+	called = 0;
+	assert(avl_tree_find(&t, (void *) 2, null_visitor, &called));
+	assert(called);
+
+	// test pre-order traversal
+	seq.i = 0;
+	seq.item_sequence[0] = 1;
+	seq.item_sequence[1] = 0;
+	seq.item_sequence[2] = 2;
+	avl_tree_pre_order(&t, sequence_visitor, &seq);
+	assert(3 == seq.i);
+
+	// test in-order traversal
+	seq.i = 0;
+	seq.item_sequence[0] = 0;
+	seq.item_sequence[1] = 1;
+	seq.item_sequence[2] = 2;
+	avl_tree_in_order(&t, sequence_visitor, &seq);
+	assert(3 == seq.i);
+
+	// test post-order traversal
+	seq.i = 0;
+	seq.item_sequence[0] = 0;
+	seq.item_sequence[1] = 2;
+	seq.item_sequence[2] = 1;
+	avl_tree_post_order(&t, sequence_visitor, &seq);
+	assert(3 == seq.i);
+
+	// test level-order traversal
+	seq.i = 0;
+	seq.item_sequence[0] = 1;
+	seq.item_sequence[1] = 0;
+	seq.item_sequence[2] = 2;
+	avl_tree_level_order(&t, sequence_visitor_level, &seq);
+	assert(3 == seq.i);
+
+	for (i = 3 ; i < 10 ; ++i)
+		assert(avl_tree_insert(&t, (void *) (int64_t) i));
+
+	assert(!avl_tree_remove(&t, (void *) (int64_t) 99));
+
+	avl_tree_destroy(&t);
+	assert(!t.root);
+
+	avl_tree_balance_node(NULL);
+}
 
 int main(int argc, char *argv[])
 {
-	// simple_insert_and_level_order();
+	simple_insert_and_level_order();
 	insert_and_remove_stress();
-
+	other_coverage();
 	return 0;
 }
