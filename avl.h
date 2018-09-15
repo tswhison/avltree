@@ -59,11 +59,8 @@ int avl_tree_remove(avl_tree *t, void *item);
 
 uint32_t avl_tree_num_items(avl_tree *t);
 
-// 1 if found, 0 if not
-int avl_tree_find(avl_tree *t,
-		void *item,
-		void (*visitor)(avl_tree_node *node, void *context),
-		void *context);
+// NULL if not found
+avl_tree_node * avl_tree_find(avl_tree *t, void *item);
 
 void avl_tree_pre_order(avl_tree *t,
 			void (*visitor)(avl_tree_node *node, void *context),

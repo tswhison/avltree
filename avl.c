@@ -64,10 +64,7 @@ uint32_t avl_tree_num_items(avl_tree *t)
 	return avl_tree_num_items_node(t->root);
 }
 
-int avl_tree_find(avl_tree *t,
-		  void *item,
-		  void (*visitor)(avl_tree_node *node, void *context),
-		  void *context)
+avl_tree_node * avl_tree_find(avl_tree *t, void *item)
 {
 	avl_tree_node *node;
 	int64_t res;
@@ -83,14 +80,12 @@ int avl_tree_find(avl_tree *t,
 		} else if (res > 0) {
 			node = node->right;
 		} else {
-			if (visitor)
-				visitor(node, context);
-			return 1;
+			return node;
 		}
 
 	}
 
-	return 0;
+	return NULL;
 }
 
 static void avl_tree_pre_order_node(avl_tree *t,

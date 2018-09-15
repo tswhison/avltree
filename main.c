@@ -322,13 +322,6 @@ void insert_and_remove_stress(void)
 	avl_tree_destroy(&t);
 }
 
-void null_visitor(avl_tree_node *node, void *context)
-{
-	int *called = (int *) context;
-	(void) node;
-	*called = 1;
-}
-
 typedef struct _visit_sequence {
 	int i;
 	int item_sequence[3];
@@ -350,8 +343,8 @@ void sequence_visitor_level(avl_tree_node *node, void *context, int level)
 void other_coverage(void)
 {
 	avl_tree t;
+	avl_tree_node *n;
 	visit_sequence seq;
-	int called = 0;
 	int i;
 
 	avl_tree_init(&t, 
@@ -365,9 +358,7 @@ void other_coverage(void)
 	avl_tree_destroy(&t);
 	assert(!t.root);
 	assert(0 == avl_tree_num_items(&t));
-	called = 0;
-	assert(!avl_tree_find(&t, (void *) 1, null_visitor, &called));
-	assert(!called);
+	assert(!avl_tree_find(&t, (void *) 1));
 	assert(0 == avl_tree_height(&t));
 
 	seq.i = 0;
@@ -384,18 +375,20 @@ void other_coverage(void)
 	// duplicates not allowed
 	assert(!avl_tree_insert(&t, (void *) 0));
 	assert(3 == avl_tree_num_items(&t));
-	assert(avl_tree_find(&t, (void *) 2, NULL, NULL));
-	assert(!avl_tree_find(&t, (void *) 3, NULL, NULL));
+	n = avl_tree_find(&t, (void *) 2);
+	assert(n);
+	assert(n->item == (void *) 2);
+	assert(!avl_tree_find(&t, (void *) 3));
 
-	called = 0;
-	assert(avl_tree_find(&t, (void *) 0, null_visitor, &called));
-	assert(called);
-	called = 0;
-	assert(avl_tree_find(&t, (void *) 1, null_visitor, &called));
-	assert(called);
-	called = 0;
-	assert(avl_tree_find(&t, (void *) 2, null_visitor, &called));
-	assert(called);
+	n = avl_tree_find(&t, (void *) 0);
+	assert(n);
+	assert(n->item == (void *) 0);
+	n = avl_tree_find(&t, (void *) 1);
+	assert(n);
+	assert(n->item == (void *) 1);
+	n = avl_tree_find(&t, (void *) 2);
+	assert(n);
+	assert(n->item == (void *) 2);
 
 	// test pre-order traversal
 	seq.i = 0;
